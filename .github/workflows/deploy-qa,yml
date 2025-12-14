@@ -56,11 +56,8 @@ jobs:
       - name: Get ECR Repo URL
         id: ecr
         run: |
-          # Obtenemos tu ID de cuenta AWS limpio
+          # Usamos AWS CLI directo para obtener la cuenta y evitar errores de formato
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          
-          # Construimos la URL manualmente (formato estandar de AWS)
-          # Formato: account_id.dkr.ecr.region.amazonaws.com/repo_name
           echo "REPO_URL=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_NAME }}" >> $GITHUB_OUTPUT
 
       - name: Login to Amazon ECR
