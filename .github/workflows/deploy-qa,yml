@@ -36,6 +36,8 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_wrapper: false
 
       # OJO: Aquí ponemos el nombre de TU bucket que creamos antes
       # Si no lo cambias, fallará en el paso de Terraform, pero AL MENOS arrancará.
@@ -53,9 +55,13 @@ jobs:
 
       - name: Get ECR Repo URL
         id: ecr
-        working-directory: ./infrastructure/terraform
         run: |
-          echo "REPO_URL=$(terraform output -raw ecr_repository_url)" >> $GITHUB_OUTPUT
+          # Obtenemos tu ID de cuenta AWS limpio
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          
+          # Construimos la URL manualmente (formato estandar de AWS)
+          # Formato: account_id.dkr.ecr.region.amazonaws.com/repo_name
+          echo "REPO_URL=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_NAME }}" >> $GITHUB_OUTPUT
 
       - name: Login to Amazon ECR
         id: login-ecr
