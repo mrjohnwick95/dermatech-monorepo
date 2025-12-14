@@ -1,0 +1,74 @@
+name: Deploy to QA
+
+on:
+  push:
+    branches:
+      - feature/sprint-1-auth
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  ENV_NAME: qa
+
+jobs:
+  deploy:
+    name: Deploy Infra and Code
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Verify Setup
+        run: echo "¡El workflow ha arrancado correctamente!"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_QA }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_QA }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN_QA }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: ./infrastructure/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=dermatech-qa-tfstate-prueba" \
+            -backend-config="key=auth-service.tfstate" \
+            -backend-config="region=us-east-1"
+
+      - name: Terraform Apply
+        working-directory: ./infrastructure/terraform
+        run: terraform apply -auto-approve -var="env=${{ env.ENV_NAME }}"
+
+      - name: Get ECR Repository URL from Terraform
+        id: ecr
+        working-directory: ./infrastructure/terraform
+        run: |
+          ECR_URL=$(terraform output -raw ecr_repository_url)
+          echo "ECR_URL=${ECR_URL}" >> $GITHUB_OUTPUT
+          echo "✅ ECR Repository URL: ${ECR_URL}"
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and Push Docker
+        run: |
+          docker build -t ${{ steps.ecr.outputs.ECR_URL }}:latest -f apps/services/core/auth-service/Dockerfile .
+          docker push ${{ steps.ecr.outputs.ECR_URL }}:latest
+
+      - name: Update ECS Service
+        run: |
+          aws ecs update-service \
+            --cluster dermatech-${{ env.ENV_NAME }}-cluster \
+            --service ${{ env.ENV_NAME }}-auth-svc \
+            --force-new-deployment
