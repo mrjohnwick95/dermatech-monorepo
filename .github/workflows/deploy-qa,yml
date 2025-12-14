@@ -36,7 +36,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
-          terraform_wrapper: false  # Esto es CRÍTICO para que funcione
+          terraform_wrapper: false
 
       - name: Terraform Init
         working-directory: ./infrastructure/terraform
@@ -56,7 +56,7 @@ jobs:
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           REPO_URL="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_NAME }}"
           echo "REPO_URL=${REPO_URL}" >> $GITHUB_OUTPUT
-          echo "📦 ECR Repository URL: ${REPO_URL}"
+          echo "ECR Repository URL: ${REPO_URL}"
 
       - name: Login to Amazon ECR
         id: login-ecr
