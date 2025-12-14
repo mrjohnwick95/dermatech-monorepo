@@ -18,12 +18,6 @@ provider "aws" {
   region = "us-east-1" # Región correcta (N. Virginia)
 }
 
-variable "env" {
-  description = "Entorno de despliegue (qa o prod)"
-  type        = string
-  default     = "qa"
-}
-
 # ------------------------------------------------------------------------------
 # 1. RED (Networking)
 # ------------------------------------------------------------------------------

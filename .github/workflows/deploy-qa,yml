@@ -3,7 +3,6 @@ name: Deploy to QA
 on:
   push:
     branches:
-      - qa
       - feature/sprint-1-auth  # <--- Sin comillas para evitar errores de sintaxis raros
   workflow_dispatch:
 
