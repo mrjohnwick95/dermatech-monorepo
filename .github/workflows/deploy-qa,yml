@@ -2,7 +2,9 @@ name: Deploy to QA
 
 on:
   push:
-    branches: [ "qa" ] # Se activa automático al fusionar en QA
+    branches:
+      - "qa"
+      - "feature/sprint-1-auth" # Se activa automático al fusionar en QA
   workflow_dispatch:   # Te deja activar manual con un botón
 
 env:
