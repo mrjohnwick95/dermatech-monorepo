@@ -1,5 +1,3 @@
-# infrastructure/terraform/main.tf
-
 terraform {
   required_providers {
     aws = {
@@ -9,13 +7,11 @@ terraform {
   }
   required_version = ">= 1.2.0"
 
-  # BLOQUE BACKEND VACÍO (CRUCIAL)
-  # GitHub Actions llenará esto automáticamente con tu bucket S3.
   backend "s3" {}
 }
 
 provider "aws" {
-  region = "us-east-1" # Región correcta (N. Virginia)
+  region = "us-east-1"
 }
 
 # ------------------------------------------------------------------------------
@@ -34,17 +30,17 @@ data "aws_subnets" "default" {
 # 2. ECR (Repositorio de Imágenes Docker)
 # ------------------------------------------------------------------------------
 resource "aws_ecr_repository" "repo" {
-  name         = "dermatech/${var.env}-auth-service"
+  name         = "dermatech-${var.env}-auth-service"  # CAMBIADO: Sin barra, con guión
   force_delete = true
 }
 
 # ------------------------------------------------------------------------------
 # 3. SEGURIDAD & ROLES (IAM)
 # ------------------------------------------------------------------------------
-# Importamos el rol predefinido de AWS Academy
 data "aws_iam_role" "lab_role" {
   name = "LabRole"
 }
+
 # ------------------------------------------------------------------------------
 # 4. LOAD BALANCER (ALB) - High Availability
 # ------------------------------------------------------------------------------
@@ -60,7 +56,6 @@ resource "aws_security_group" "lb_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
   
-  # Comunicación interna Balanceador -> Contenedor
   ingress {
     from_port   = 3000
     to_port     = 3000
@@ -91,7 +86,7 @@ resource "aws_lb_target_group" "app_tg" {
   target_type = "ip"
   vpc_id      = aws_default_vpc.default.id
   health_check {
-    path = "/api/health" # Debe coincidir con tu HealthController
+    path = "/api/health"
   }
 }
 
@@ -126,7 +121,7 @@ resource "aws_ecs_task_definition" "app_task" {
   requires_compatibilities = ["FARGATE"]
   cpu                      = 256
   memory                   = 512
-  execution_role_arn = data.aws_iam_role.lab_role.arn
+  execution_role_arn       = data.aws_iam_role.lab_role.arn
 
   container_definitions = jsonencode([{
     name      = "auth-service"
@@ -136,9 +131,8 @@ resource "aws_ecs_task_definition" "app_task" {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        # Usamos el grupo creado arriba para evitar errores de permisos
         "awslogs-group"         = aws_cloudwatch_log_group.ecs_logs.name
-        "awslogs-region"        = "us-east-1" # CORREGIDO: Ahora coincide con el provider
+        "awslogs-region"        = "us-east-1"
         "awslogs-stream-prefix" = "ecs"
       }
     }
@@ -146,11 +140,11 @@ resource "aws_ecs_task_definition" "app_task" {
 }
 
 resource "aws_ecs_service" "main" {
-  name            = "${var.env}-auth-svc"
-  cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.app_task.arn
-  launch_type     = "FARGATE"
-  desired_count   = 2 # High Availability (2 réplicas)
+  name                 = "${var.env}-auth-svc"
+  cluster              = aws_ecs_cluster.main.id
+  task_definition      = aws_ecs_task_definition.app_task.arn
+  launch_type          = "FARGATE"
+  desired_count        = 2
   force_new_deployment = true
 
   network_configuration {
@@ -169,7 +163,7 @@ resource "aws_ecs_service" "main" {
 }
 
 # ------------------------------------------------------------------------------
-# 7. JUMP BOX (BASTION HOST) - Requisito de Seguridad
+# 7. JUMP BOX (BASTION HOST)
 # ------------------------------------------------------------------------------
 resource "aws_security_group" "bastion_sg" {
   name        = "${var.env}-bastion-sg"
@@ -180,7 +174,7 @@ resource "aws_security_group" "bastion_sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Idealmente restringir a tu IP
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
@@ -192,16 +186,12 @@ resource "aws_security_group" "bastion_sg" {
 }
 
 resource "aws_instance" "bastion" {
-  # AMI de Amazon Linux 2023 en us-east-1 (Verificado)
-  ami           = "ami-051f7e7f6c2f40dc1" 
+  ami           = "ami-051f7e7f6c2f40dc1"
   instance_type = "t2.micro"
   subnet_id     = tolist(data.aws_subnets.default.ids)[0]
   
   vpc_security_group_ids = [aws_security_group.bastion_sg.id]
-  
-  # 'vockey' es la clave por defecto en AWS Academy Learner Labs.
-  # Si no existe, debes crear una "Key Pair" en la consola EC2 llamada "vockey"
-  key_name = "vockey" 
+  key_name               = "vockey"
 
   tags = {
     Name = "${var.env}-jump-box-bastion"
@@ -212,15 +202,16 @@ resource "aws_instance" "bastion" {
 # OUTPUTS
 # ------------------------------------------------------------------------------
 output "load_balancer_dns" {
-  description = "Entregar este DNS al docente para Cloudflare"
+  description = "DNS del Load Balancer"
   value       = aws_lb.app_lb.dns_name
 }
 
 output "bastion_public_ip" {
-  description = "Entregar esta IP al docente como 'Jump Box IP'"
+  description = "IP pública del Bastion"
   value       = aws_instance.bastion.public_ip
 }
 
 output "ecr_repository_url" {
-  value = aws_ecr_repository.repo.repository_url
+  description = "URL del repositorio ECR"
+  value       = aws_ecr_repository.repo.repository_url
 }
