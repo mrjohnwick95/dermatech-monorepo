@@ -3,7 +3,7 @@ name: Deploy to QA
 on:
   push:
     branches:
-      - feature/sprint-1-auth  # <--- Sin comillas para evitar errores de sintaxis raros
+      - feature/sprint-1-auth
   workflow_dispatch:
 
 env:
@@ -22,7 +22,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # 1. Hacemos un "Eco" simple para ver si arranca
       - name: Verify Setup
         run: echo "¡El workflow ha arrancado correctamente!"
 
@@ -37,10 +36,8 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
-          terraform_wrapper: false
+          terraform_wrapper: false  # Esto es CRÍTICO para que funcione
 
-      # OJO: Aquí ponemos el nombre de TU bucket que creamos antes
-      # Si no lo cambias, fallará en el paso de Terraform, pero AL MENOS arrancará.
       - name: Terraform Init
         working-directory: ./infrastructure/terraform
         run: |
@@ -56,9 +53,10 @@ jobs:
       - name: Get ECR Repo URL
         id: ecr
         run: |
-          # Usamos AWS CLI directo para obtener la cuenta y evitar errores de formato
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          echo "REPO_URL=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_NAME }}" >> $GITHUB_OUTPUT
+          REPO_URL="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_NAME }}"
+          echo "REPO_URL=${REPO_URL}" >> $GITHUB_OUTPUT
+          echo "📦 ECR Repository URL: ${REPO_URL}"
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -75,4 +73,7 @@ jobs:
 
       - name: Update ECS Service
         run: |
-          aws ecs update-service --cluster dermatech-${{ env.ENV_NAME }}-cluster --service ${{ env.ENV_NAME }}-auth-svc --force-new-deployment
+          aws ecs update-service \
+            --cluster dermatech-${{ env.ENV_NAME }}-cluster \
+            --service ${{ env.ENV_NAME }}-auth-svc \
+            --force-new-deployment
