@@ -1,0 +1,71 @@
+name: Deploy to QA
+
+on:
+  push:
+    branches: [ "qa" ] # Se activa automático al fusionar en QA
+  workflow_dispatch:   # Te deja activar manual con un botón
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO_NAME: dermatech/qa-auth-service
+  ENV_NAME: qa
+
+jobs:
+  deploy:
+    name: Deploy Infra and Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # 1. Configurar Credenciales (Incluyendo Token de Estudiante)
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_QA }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_QA }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN_QA }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 2. Terraform (Infraestructura)
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Init
+        working-directory: ./infrastructure/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=dermatech-qa-tfstate-prueba" \
+            -backend-config="key=auth-service.tfstate" \
+            -backend-config="region=us-east-1"
+        # ^^^ ¡REEMPLAZA ESTO CON EL BUCKET QUE CREASTE EN LA TERMINAL! ^^^
+
+      - name: Terraform Apply
+        working-directory: ./infrastructure/terraform
+        run: terraform apply -auto-approve -var="env=${{ env.ENV_NAME }}"
+
+      # 3. Obtener URL del ECR
+      - name: Get ECR Repo URL
+        id: ecr
+        working-directory: ./infrastructure/terraform
+        run: |
+          echo "REPO_URL=$(terraform output -raw ecr_repository_url)" >> $GITHUB_OUTPUT
+
+      # 4. Docker (Construir y Subir)
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.ECR_REPO_NAME }}
+          IMAGE_TAG: latest
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f apps/services/core/auth-service/Dockerfile .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      # 5. Desplegar en ECS
+      - name: Update ECS Service
+        run: |
+          aws ecs update-service --cluster dermatech-${{ env.ENV_NAME }}-cluster --service ${{ env.ENV_NAME }}-auth-svc --force-new-deployment
